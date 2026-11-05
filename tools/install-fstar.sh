@@ -16,7 +16,8 @@
 #
 # A source build needs an OCaml switch with F*'s dependencies (see F*'s
 # INSTALL.md); FSTAR_SRC overrides where the checkout is kept, and FSTAR_JOBS the
-# build parallelism, and FSTAR_OPAM_DEPS=1 installs F*'s opam dependencies first.
+# build parallelism, FSTAR_MAKE overrides GNU make (4.x or newer), and
+# FSTAR_OPAM_DEPS=1 installs F*'s opam dependencies first.
 
 set -euo pipefail
 
@@ -38,15 +39,33 @@ pin() { sed -n "s/^$1=//p" "$SOURCE_PIN" | tr -d '[:space:]'; }
 REPO="$(pin repo)"; PR="$(pin pr)"; COMMIT="$(pin commit)"
 MERGE="$(pin merge)"; Z3="$(pin z3)"
 SRC="${FSTAR_SRC:-$TOOLS_DIR/fstar-src}"
+shopt -s nullglob
+PATCHES=("$TOOLS_DIR"/fstar-patches/*.patch)
+BUILD_ID="$(cat "$SOURCE_PIN" "$TOOLS_DIR/install-fstar.sh" ${PATCHES[@]+"${PATCHES[@]}"} | git hash-object --stdin)"
 
-# Already installed at the pinned tree: nothing to do. `make` decides by timestamps, and
+# Already installed at the pinned, patched tree: nothing to do. `make` decides by timestamps, and
 # a checkout or merge that rewrites the pin file must not cost a full F* rebuild.
 if [[ -n "$(pin result)" && -x "$TOOLS_DIR/fstar/bin/fstar.exe" &&
-      "$(cat "$TOOLS_DIR/fstar/version.txt" 2>/dev/null)" == "$(pin result)" ]]; then
+      "$(cat "$TOOLS_DIR/fstar/version.txt" 2>/dev/null)" == "$(pin result)" &&
+      "$(cat "$TOOLS_DIR/fstar/build-id.txt" 2>/dev/null)" == "$BUILD_ID" ]]; then
   touch "$TOOLS_DIR/fstar/bin/fstar.exe"
   exit 0
 fi
 JOBS="${FSTAR_JOBS:-$(nproc 2>/dev/null || echo 4)}"
+
+MAKE_BIN="${FSTAR_MAKE:-}"
+if [[ -z "$MAKE_BIN" ]]; then
+  if command -v gmake >/dev/null 2>&1; then
+    MAKE_BIN=gmake
+  else
+    MAKE_BIN=make
+  fi
+fi
+MAKE_VERSION="$("$MAKE_BIN" --version 2>/dev/null | sed -n '1s/^GNU Make \([0-9]*\).*/\1/p')" || true
+if [[ ! "$MAKE_VERSION" =~ ^[0-9]+$ ]] || (( MAKE_VERSION < 4 )); then
+  echo "error: F* needs GNU make >= 4; on macOS run 'brew install make', or set FSTAR_MAKE" >&2
+  exit 1
+fi
 
 if [[ ! -d "$SRC/.git" ]]; then
   git clone --filter=blob:none "$REPO" "$SRC"
@@ -66,6 +85,10 @@ if [[ -n "$RESULT" && "$(git rev-parse HEAD)" != "$RESULT" ]]; then
   echo "error: built tree is $(git rev-parse HEAD), but $SOURCE_PIN pins result=$RESULT" >&2
   exit 1
 fi
+for patch in ${PATCHES[@]+"${PATCHES[@]}"}; do
+  git apply --check "$patch"
+  git apply "$patch"
+done
 git submodule update --init --quiet karamel
 if [[ "${FSTAR_OPAM_DEPS:-0}" == 1 ]]; then
   opam install --yes --deps-only ./fstar.opam
@@ -75,7 +98,7 @@ fi
 Z3_BUILD_DIR="$(mktemp -d)"
 trap 'rm -rf "$Z3_BUILD_DIR"' EXIT
 "$SRC/.scripts/get_fstar_z3.sh" "$Z3_BUILD_DIR" >/dev/null
-PATH="$Z3_BUILD_DIR:$PATH" make -j"$JOBS" 3
+PATH="$Z3_BUILD_DIR:$PATH" "$MAKE_BIN" -j"$JOBS" 3
 
 rm -rf "$TOOLS_DIR/fstar"
 mkdir -p "$TOOLS_DIR/fstar"
@@ -94,3 +117,4 @@ fi
 # would be a second, unpinned way for a proof to pass.
 find "$TOOLS_DIR/fstar/lib/fstar" -maxdepth 1 -name 'z3-*' ! -name "z3-$Z3" -exec rm -rf {} +
 git rev-parse HEAD > "$TOOLS_DIR/fstar/version.txt"
+printf '%s\n' "$BUILD_ID" > "$TOOLS_DIR/fstar/build-id.txt"

@@ -1,0 +1,48 @@
+Establish sift_down's child-index equations immediately after the arithmetic,
+before reads and branches add heap and ordering facts to the SMT context.
+Keep the specifications and solver limits unchanged.
+
+diff --git a/pulse/lib/pulse/lib/Pulse.Lib.PriorityQueue.fst b/pulse/lib/pulse/lib/Pulse.Lib.PriorityQueue.fst
+--- a/pulse/lib/pulse/lib/Pulse.Lib.PriorityQueue.fst
++++ b/pulse/lib/pulse/lib/Pulse.Lib.PriorityQueue.fst
+@@ -1107,6 +1107,7 @@
+ {
+   // We know: fits(2*len + 2), so fits(2*idx + 1) since idx < len
+   let left : SZ.t = SZ.add (SZ.mul 2sz idx) 1sz;
++  assert (pure (SZ.v left == left_idx (SZ.v idx)));
+   
+   if (SZ.gte left len) {
+     // Leaf node - heap_down_at is trivially satisfied
+@@ -1115,5 +1116,6 @@
+   } else {
+     // Compute right directly from idx for SMT clarity
+     let right : SZ.t = SZ.add (SZ.mul 2sz idx) 2sz;
++    assert (pure (SZ.v right == right_idx (SZ.v idx)));
+     let current_val = RV.get pq idx;
+     let left_val = RV.get pq left;
+@@ -1124,8 +1126,6 @@
+       if (left_val <=? right_val) {
+         if (left_val <? current_val) {
+           // left = left_idx idx, left is smallest child and smaller than current
+-          assert (pure (SZ.v left == left_idx (SZ.v idx)));
+-          assert (pure (SZ.v right == right_idx (SZ.v idx)));
+           // Preconditions of sift_down_swap_lemma:
+           assert (pure (Seq.index s (SZ.v left) <? Seq.index s (SZ.v idx)));
+           assert (pure (Seq.index s (SZ.v left) <=? Seq.index s (SZ.v right)));
+@@ -1151,8 +1151,6 @@
+       } else {
+         if (right_val <? current_val) {
+           // right = right_idx idx, right is smallest child and smaller than current
+-          assert (pure (SZ.v left == left_idx (SZ.v idx)));
+-          assert (pure (SZ.v right == right_idx (SZ.v idx)));
+           // right is smaller, so establish: right <=? left
+           // !(left <=? right) means right <? left, so right <=? left
+           not_le_implies_lt left_val right_val;
+@@ -1182,7 +1180,6 @@
+     } else {
+       // Only left child
+       if (left_val <? current_val) {
+-        assert (pure (SZ.v left == left_idx (SZ.v idx)));
+         // No right child, so "smallest child" condition is vacuously satisfied
+         sift_down_swap_lemma s (SZ.v idx) (SZ.v left);
+         grandparent_after_swap s (SZ.v idx) (SZ.v left);

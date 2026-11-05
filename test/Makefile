@@ -18,6 +18,7 @@ all: $(TESTS) lint
 # contributor sees when they open the file.
 .PHONY: lint
 lint: $(TESTS)
+	@bash install-fstar.sh
 	@bash no-example-names.sh
 	@bash diagnostic-ids.sh
 	@bash provenance-lint.sh

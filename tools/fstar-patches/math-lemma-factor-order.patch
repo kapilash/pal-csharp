@@ -1,0 +1,11 @@
+Match the factor order expected by modulo_division_lemma, avoiding a fragile
+nonlinear arithmetic step with the released macOS Z3 binary.
+
+diff --git a/ulib/FStar.Math.Lemmas.fst b/ulib/FStar.Math.Lemmas.fst
+--- a/ulib/FStar.Math.Lemmas.fst
++++ b/ulib/FStar.Math.Lemmas.fst
+@@ -659,3 +659,3 @@
+ let pow2_modulo_division_lemma_1 a b c =
+-  pow2_plus (c - b) b;
++  pow2_plus b (c - b);
+   modulo_division_lemma a (pow2 b) (pow2 (c - b))

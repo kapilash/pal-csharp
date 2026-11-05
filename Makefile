@@ -7,7 +7,7 @@ all: build lib
 # Install the pinned F*/Pulse toolchain into tools/fstar.
 tools: tools/fstar/bin/fstar.exe
 
-tools/fstar/bin/fstar.exe: tools/fstar-version.txt $(wildcard tools/fstar-source.txt) tools/install-fstar.sh
+tools/fstar/bin/fstar.exe: tools/fstar-version.txt $(wildcard tools/fstar-source.txt tools/fstar-patches/*.patch) tools/install-fstar.sh
 	./tools/install-fstar.sh
 
 # Build the .NET translator.
